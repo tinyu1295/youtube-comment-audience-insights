@@ -1,0 +1,49 @@
+# Credentials & secrets — never commit these
+*.csv
+*.json
+!yt-chrome-plugin-frontend/manifest.json
+*.env
+.env*
+*_credentials*
+*_accessKeys*
+*credentials*
+*accessKeys*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+sentiment/
+
+# Logs
+*.log
+
+# DVC (cache and tmp are handled by .dvc/.gitignore, but dvc.lock should be committed)
+# Data files tracked by DVC — commit the .dvc pointer files, not the raw data
+
+# Trained model binary — loaded from MLflow registry at runtime, not needed in git
+models/trained_model/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
