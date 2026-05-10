@@ -80,11 +80,11 @@ def load_model(model_path, vectorizer_path):
         raise
 
 
-# Initialize the model and vectorizer — try MLflow registry first, fall back to local pkl
 try:
     model, vectorizer = load_model_and_vectorizer(
         "yt_comment_judge_plugin_model", "3", "models/vectorizer_model/tfidf_vectorizer.pkl")
-except Exception:
+except Exception as e:
+    print(f"MLflow model load failed ({e}), falling back to local model")
     model, vectorizer = load_model(
         "models/trained_model/lgbm_model.pkl", "models/vectorizer_model/tfidf_vectorizer.pkl")
 
@@ -114,7 +114,8 @@ def predict():
 
         # Use the underlying sklearn model directly to avoid MLflow schema enforcement.
         # Works whether the model was loaded via mlflow.pyfunc or from a local pkl.
-        _sklearn = getattr(getattr(model, '_model_impl', model), 'sklearn_model', model)
+        _sklearn = getattr(getattr(model, '_model_impl',
+                           model), 'sklearn_model', model)
         predictions = _sklearn.predict(transformed_comments.toarray()).tolist()
     except Exception as e:
         return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
@@ -146,8 +147,10 @@ def predict_with_timestamps():
 
         # Use the underlying sklearn model directly to avoid MLflow schema enforcement.
         # Works whether the model was loaded via mlflow.pyfunc or from a local pkl.
-        _sklearn = getattr(getattr(model, '_model_impl', model), 'sklearn_model', model)
-        predictions = [str(p) for p in _sklearn.predict(transformed_comments.toarray()).tolist()]
+        _sklearn = getattr(getattr(model, '_model_impl',
+                           model), 'sklearn_model', model)
+        predictions = [str(p) for p in _sklearn.predict(
+            transformed_comments.toarray()).tolist()]
     except Exception as e:
         return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
 

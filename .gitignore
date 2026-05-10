@@ -35,8 +35,6 @@ sentiment/
 # DVC (cache and tmp are handled by .dvc/.gitignore, but dvc.lock should be committed)
 # Data files tracked by DVC — commit the .dvc pointer files, not the raw data
 
-# Trained model binary — loaded from MLflow registry at runtime, not needed in git
-models/trained_model/
 
 # OS
 .DS_Store
