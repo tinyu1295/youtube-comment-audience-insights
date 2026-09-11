@@ -1,0 +1,61 @@
+# Credentials & secrets — never commit these
+*.env
+.env*
+*_credentials*
+*_accessKeys*
+*credentials*
+*accessKeys*
+*.pem
+*.key
+
+# Data files (the source dataset reddit.csv is tracked deliberately)
+*.csv
+!reddit.csv
+
+# Generated JSON, but keep checked-in config such as extension manifests
+*.json
+!**/manifest.json
+!.github/**/*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+sentiment/
+
+# Logs
+*.log
+
+# DVC (cache and tmp are handled by .dvc/.gitignore, but dvc.lock should be committed)
+# Data files tracked by DVC — commit the .dvc pointer files, not the raw data
+
+
+# MLflow local run store
+mlruns/
+
+# Build artifacts
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
