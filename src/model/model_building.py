@@ -83,7 +83,8 @@ def train_lgbm(X_train: np.ndarray, y_train: np.ndarray, learning_rate: float, m
             objective='multiclass',
             num_class=3,
             metric="multi_logloss",
-            is_unbalance=True,
+            # class_weight alone: the sweep showed is_unbalance is a no-op for
+            # multiclass objectives (identical scores at all 10 feature sizes).
             class_weight="balanced",
             reg_alpha=0.1,  # L1 regularization
             reg_lambda=0.1,  # L2 regularization
