@@ -1,0 +1,18 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Defaults to the model baked into the image. Point at a tracking server
+      # to serve the registered model instead.
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-file:///app/mlruns}
+      MODEL_NAME: ${MODEL_NAME:-yt_comment_judge_plugin_model}
+      MODEL_VERSION: ${MODEL_VERSION:-3}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s

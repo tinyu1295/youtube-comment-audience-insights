@@ -1,0 +1,16 @@
+.git
+.github
+.dvc
+.venv
+venv
+__pycache__
+*.pyc
+tests
+data
+mlruns
+reddit.csv
+*.log
+*.md
+*.csv
+!params.yaml
+yt-chrome-plugin-frontend
