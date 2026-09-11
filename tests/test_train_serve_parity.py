@@ -57,3 +57,19 @@ def test_no_hardcoded_infrastructure_addresses():
         if 'amazonaws.com' in text or 'http://5' in text:
             offenders.append(str(path.relative_to(REPO_ROOT)))
     assert not offenders, f'hardcoded infrastructure addresses in: {offenders}'
+
+
+def test_dvc_stages_run_modules_not_scripts():
+    """`python path/to/script.py` puts the script's own directory on sys.path,
+    not the repository root, so `from src...` imports fail unless the package
+    happens to be pip-installed. `python -m` keeps the root importable."""
+    import yaml
+
+    with open(REPO_ROOT / 'dvc.yaml') as f:
+        pipeline = yaml.safe_load(f)
+
+    for name, stage in pipeline['stages'].items():
+        assert stage['cmd'].startswith('python -m '), (
+            f"stage '{name}' invokes a script path; use `python -m` so the "
+            f"repository root stays importable"
+        )
