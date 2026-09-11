@@ -1,16 +1,28 @@
 {
   "manifest_version": 3,
-  "name": "YouTube Comment Audience Insights 1.0",
-  "version": "1.0",
+  "name": "YouTube Comment Audience Insights",
+  "version": "1.1",
   "description": "Analyzes YouTube video comments for sentiment.",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
   },
   "permissions": [
     "tabs",
     "activeTab",
-    "scripting",
-    "http://localhost/*",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*",
     "https://www.googleapis.com/*"
   ]
 }

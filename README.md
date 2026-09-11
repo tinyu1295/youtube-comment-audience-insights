@@ -171,18 +171,18 @@ registry is unreachable, so it works offline.
 You need your own [YouTube Data API v3 key](https://console.cloud.google.com/apis/library/youtube.googleapis.com)
 — the API is free within a generous daily quota.
 
-1. Open `yt-chrome-plugin-frontend/popup.js` and set `API_KEY` to your key.
-2. Set `API_URL` to `http://localhost:8000` and make sure the matching host
-   appears in `manifest.json` under `permissions`.
-3. Go to `chrome://extensions`, enable **Developer mode**, click
+1. Go to `chrome://extensions`, enable **Developer mode**, click
    **Load unpacked**, and select `yt-chrome-plugin-frontend/`.
-4. Open any YouTube video and click the extension icon.
+2. Open any YouTube video and click the extension icon. On first run it asks
+   for your API key and the backend URL.
+3. The key is saved to `chrome.storage.sync` — per-browser, never written to
+   the repository.
 
-> **Note on the API key.** A Chrome extension ships its source to every user, so
-> an embedded key is readable by anyone who installs it. Restrict the key in the
-> Google Cloud console to the YouTube Data API and set a quota cap. For a public
-> release, proxy YouTube requests through the backend instead of calling the
-> API from the popup.
+> **Note on the API key.** No key is committed to this repository, by design: an
+> extension ships its source to every user, so an embedded key is readable by
+> anyone who installs it. Restrict your key in the Google Cloud console to the
+> YouTube Data API and set a quota cap. For a public release, proxy YouTube
+> requests through the backend rather than calling the API from the popup.
 
 ---
 
