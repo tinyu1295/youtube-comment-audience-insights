@@ -186,6 +186,15 @@ def main():
                         f"test_{label}_f1-score": metrics['f1-score']
                     })
 
+            # Headline metrics under stable, queryable names. The keys above are
+            # derived from classification_report labels and contain spaces, which
+            # makes them awkward to filter on; registration selects on these.
+            mlflow.log_metrics({
+                'test_accuracy': report['accuracy'],
+                'test_macro_f1': report['macro avg']['f1-score'],
+                'test_weighted_f1': report['weighted avg']['f1-score'],
+            })
+
             # Log confusion matrix
             log_confusion_matrix(cm, "Test Data")
 
