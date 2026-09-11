@@ -11,11 +11,14 @@
 # Data files (the source dataset reddit.csv is tracked deliberately)
 *.csv
 !reddit.csv
+# Experiment results are evidence, not regenerable-on-demand data — keep them
+!data/experiments/*.csv
 
 # Generated JSON, but keep checked-in config such as extension manifests
 *.json
 !**/manifest.json
 !.github/**/*.json
+!data/experiments/*.json
 
 # Python
 __pycache__/

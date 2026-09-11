@@ -1,0 +1,6 @@
+{
+    "best_strategy": "class_weight_balanced",
+    "best_max_features": 10000,
+    "best_val_macro_f1": 0.841,
+    "configurations_run": 50
+}
