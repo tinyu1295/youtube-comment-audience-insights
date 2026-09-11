@@ -3,8 +3,10 @@ stages:
     cmd: python src/data/data_ingestion.py
     deps:
       - src/data/data_ingestion.py
+      - reddit.csv
     params:
       - data_ingestion.test_size
+      - data_ingestion.random_state
     outs:
       - data/raw:
           cache: false
@@ -15,6 +17,7 @@ stages:
       - data/raw/train.csv
       - data/raw/test.csv
       - src/data/data_preprocessing.py
+      - src/preprocessing.py
     outs:
       - data/preprocessed:
           cache: false
