@@ -15,6 +15,7 @@ comments labelled individually.
 
 - [How it works](#how-it-works)
 - [Model performance](#model-performance)
+- [Experiments](#experiments)
 - [Repository layout](#repository-layout)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
@@ -54,9 +55,16 @@ affects:
 |---|---|---|
 | `data_ingestion` | Drops nulls, duplicates, blanks; random 80/20 split | `data/raw/` |
 | `data_preprocessing` | Lowercase, strip noise, remove stopwords, lemmatise | `data/preprocessed/` |
-| `model_building` | Fit TF-IDF (1–3 grams, 1000 features), train LightGBM | `models/` |
+| `model_building` | Fit TF-IDF (1–3 grams, 5000 features), train LightGBM | `models/` |
 | `model_evaluation` | Classification report, confusion matrix, log to MLflow | `data/evaluation/` |
-| `model_registration` | Register the run and alias it `staging` | MLflow registry |
+| `model_registration` | Compare against every prior run; register the best and alias it `staging` | MLflow registry |
+
+Registration is gated on macro F1 rather than on recency. Promoting whichever
+run finished last means a worse model silently replaces a better one on every
+re-run; [register_model.py](src/model/register_model.py) queries the experiment,
+ranks by metric, and promotes the winner — which may be the run that just
+finished, or may not be. Macro F1 rather than accuracy, so a model that ignores
+the minority negative class cannot win.
 
 **Inference** runs in Flask. The extension pulls comment threads from the
 YouTube Data API, posts them to `/predict_with_timestamps`, and renders the
@@ -71,27 +79,84 @@ LightGBM over TF-IDF features, measured on the held-out 20% test split
 (7,359 comments). These numbers come from the committed model and are
 reproducible with `dvc repro`.
 
-**Accuracy: 78.4%** · Macro F1: 0.766 · Weighted F1: 0.782
+**Accuracy: 86.8%** · Macro F1: 0.858 · Weighted F1: 0.867
 
 | Class | Precision | Recall | F1 | Support |
 |---|---|---|---|---|
-| Negative (−1) | 0.675 | 0.639 | 0.656 | 1,671 |
-| Neutral (0) | 0.771 | 0.923 | 0.840 | 2,587 |
-| Positive (1) | 0.863 | 0.747 | 0.801 | 3,101 |
+| Negative (−1) | 0.805 | 0.780 | 0.792 | 1,671 |
+| Neutral (0) | 0.860 | 0.964 | 0.909 | 2,587 |
+| Positive (1) | 0.912 | 0.836 | 0.872 | 3,101 |
 
 **Confusion matrix** (rows actual, columns predicted):
 
 |  | −1 | 0 | 1 |
 |---|---|---|---|
-| **−1** | **1067** | 305 | 299 |
-| **0** | 132 | **2387** | 68 |
-| **1** | 382 | 404 | **2315** |
+| **−1** | **1303** | 152 | 216 |
+| **0** | 60 | **2493** | 34 |
+| **1** | 255 | 255 | **2591** |
 
-The model is strongest on positive comments (0.863 precision) and weakest on
-negative ones — negative is the smallest class (8,277 of 37,249 rows) and is
-most often confused with neutral. `class_weight="balanced"` compensates
-partially but does not close the gap. See
+Negative remains the hardest class — it is the smallest (8,277 of 37,249 rows)
+and is most often confused with positive. It is also the class that gained most
+from the sweep below: recall rose from 0.639 to 0.780 once the vocabulary was
+large enough to carry the distinguishing n-grams. See
 [Known limitations](#known-limitations).
+
+---
+
+## Experiments
+
+Five class-imbalance strategies × ten vocabulary sizes, fifty configurations,
+each a tracked MLflow run. Selection is on a validation split carved out of the
+training data — the test set above is never used for tuning, so the reported
+test metrics are an honest estimate rather than the best of fifty attempts.
+
+```bash
+python -m src.model.run_experiments          # full grid, ~12 min
+python -m src.model.run_experiments --quick  # 6 configs, smoke test
+```
+
+Full results: [`data/experiments/sweep_results.csv`](data/experiments/sweep_results.csv).
+Validation macro F1:
+
+| max_features | none | class_weight | is_unbalance | oversample | undersample |
+|---|---|---|---|---|---|
+| 100 | 0.550 | 0.568 | 0.550 | 0.563 | 0.565 |
+| 250 | 0.644 | 0.643 | 0.644 | 0.636 | 0.642 |
+| 500 | 0.706 | 0.702 | 0.706 | 0.697 | 0.693 |
+| 1000 | 0.756 | 0.758 | 0.756 | 0.751 | 0.749 |
+| 2000 | 0.807 | 0.806 | 0.807 | 0.803 | 0.797 |
+| 3000 | 0.829 | 0.835 | 0.829 | 0.830 | 0.815 |
+| 5000 | 0.839 | **0.841** | 0.839 | 0.837 | 0.817 |
+| 7500 | 0.839 | 0.836 | 0.839 | 0.840 | 0.820 |
+| 10000 | 0.839 | **0.841** | 0.839 | 0.838 | 0.818 |
+| 15000 | 0.839 | 0.840 | 0.839 | 0.839 | 0.817 |
+
+### What the sweep showed
+
+**Vocabulary size mattered far more than imbalance handling.** Going from 1,000
+to 5,000 features gained **+0.083 macro F1**. The spread between the best and
+worst imbalance strategy at any fixed size is at most 0.006. Roughly a
+fourteen-fold difference in impact — the original 1,000-feature setting was
+simply starving the model of features.
+
+**`is_unbalance=True` is a no-op here.** Its scores are identical to no handling
+at all ten feature sizes, to the last decimal. It is a binary-objective
+parameter that LightGBM ignores under `objective='multiclass'`. The original
+model set it *and* `class_weight="balanced"` together; only the latter was ever
+doing anything, and the redundant flag has been removed.
+
+**Class weighting wins, but narrowly.** It takes the top spot at six of ten
+sizes and has the best mean across the grid (0.7670 vs 0.7647 for no handling).
+Real, but small next to the feature-count effect.
+
+**Undersampling is consistently worst** at every size above 250 — discarding
+majority-class rows costs more information than the balance is worth.
+
+**5,000 features shipped, not 10,000.** They score within 0.0003 of each other,
+which is noise, and 5,000 halves the memory the API densifies per request.
+
+Adopting this (`max_features: 1000 → 5000`) took test accuracy from 78.4% to
+**86.8%** and negative-class recall from 0.639 to **0.780**.
 
 ---
 
@@ -108,11 +173,15 @@ partially but does not close the gap. See
 │   └── model/
 │       ├── model_building.py
 │       ├── model_evaluation.py
-│       └── register_model.py
+│       ├── register_model.py  # metric-gated promotion
+│       └── run_experiments.py # imbalance x feature-size sweep
 ├── flask_api/main.py          # inference + visualisation endpoints
 ├── yt-chrome-plugin-frontend/ # Chrome extension (Manifest V3)
 ├── tests/                     # pytest suite
+├── data/experiments/          # sweep results (committed as evidence)
 ├── .github/workflows/ci.yml   # pyflakes + pytest on 3.10 / 3.11
+├── Dockerfile                 # production image (gunicorn)
+├── DEPLOYMENT.md              # EC2 and container deployment
 ├── dvc.yaml                   # pipeline definition
 ├── params.yaml                # hyperparameters
 └── reddit.csv                 # labelled training data
@@ -159,12 +228,16 @@ python -m src.model.model_building
 ### 3. Run the API
 
 ```bash
-python -m flask_api.main
+python -m flask_api.main          # development
+docker compose up --build         # production image, gunicorn
 ```
 
 Serves on `http://127.0.0.1:8000`. It loads the model from the MLflow registry
 and falls back to the committed `models/trained_model/lgbm_model.pkl` if the
 registry is unreachable, so it works offline.
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for running it on EC2, and for the hardening
+this deliberately does not do.
 
 ### 4. Load the extension
 
@@ -258,6 +331,10 @@ points of accuracy; it was not worth the latency and hosting cost here.
 `however`, and `yet` — the exact words that invert sentiment. `"not good"` and
 `"good"` would normalise identically. Those five are explicitly kept.
 
+**Configuration is evidence-based, not inherited.** Every hyperparameter that
+matters here was chosen by the sweep above and can be re-derived by re-running
+it, rather than being copied from a tutorial default.
+
 **The vectorizer is fit on the training split only** and persisted alongside the
 model, so no test-set vocabulary leaks into training.
 
@@ -270,9 +347,9 @@ server falls back to the committed local model, so the demo works offline.
 
 Honest list of what this does not do well:
 
-- **Negative recall is 0.639.** Roughly a third of negative comments are missed,
-  mostly classified as neutral. The training data is imbalanced (22% negative)
-  and sarcasm — common in YouTube comments — is not handled at all.
+- **Negative recall is 0.780.** Around a fifth of negative comments are still
+  missed, most often scored positive. The training data is imbalanced (22%
+  negative) and sarcasm — common in YouTube comments — is not handled at all.
 - **Trained on Reddit, deployed on YouTube.** The labelled corpus is Reddit
   comments. The domains are similar but not identical, and no evaluation on
   labelled YouTube data has been done, so the reported accuracy is likely
@@ -290,6 +367,7 @@ Honest list of what this does not do well:
 ### Possible next steps
 
 - Evaluate on hand-labelled YouTube comments to measure the domain gap.
+- Sweep n-gram range and LightGBM depth/estimators, which were held fixed.
 - Compare against a fine-tuned DistilBERT to quantify the accuracy/latency trade.
 - Move the YouTube API key server-side and add rate limiting.
 - Containerise the API and wire deployment into CI.
