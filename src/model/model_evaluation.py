@@ -1,35 +1,27 @@
-import numpy as np
-import pandas as pd
-import pickle
-import logging
-import yaml
-import mlflow
-import mlflow.sklearn
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.feature_extraction.text import TfidfVectorizer
-import os
-import matplotlib.pyplot as plt
-import seaborn as sns
 import json
-from mlflow.models import infer_signature
+import os
+import sys
 
-# logging configuration
-logger = logging.getLogger('model_evaluation')
-logger.setLevel('DEBUG')
+import matplotlib
+matplotlib.use('Agg')  # non-interactive backend, required for headless runs
 
-console_handler = logging.StreamHandler()
-console_handler.setLevel('DEBUG')
+import matplotlib.pyplot as plt  # noqa: E402
+import mlflow  # noqa: E402
+import mlflow.sklearn  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import pickle  # noqa: E402
+import seaborn as sns  # noqa: E402
+import yaml  # noqa: E402
+from mlflow.models import infer_signature  # noqa: E402
+from sklearn.feature_extraction.text import TfidfVectorizer  # noqa: E402
+from sklearn.metrics import classification_report, confusion_matrix  # noqa: E402
 
-file_handler = logging.FileHandler('model_evaluation_errors.log')
-file_handler.setLevel('ERROR')
+from src.config import (MLFLOW_EXPERIMENT_NAME, MLFLOW_TRACKING_URI,  # noqa: E402
+                        path)
+from src.logging_utils import get_logger  # noqa: E402
 
-formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-console_handler.setFormatter(formatter)
-file_handler.setFormatter(formatter)
-
-logger.addHandler(console_handler)
-logger.addHandler(file_handler)
+logger = get_logger('model_evaluation', 'model_evaluation_errors.log')
 
 
 def load_data(file_path: str) -> pd.DataFrame:
@@ -106,8 +98,9 @@ def log_confusion_matrix(cm, dataset_name):
     plt.ylabel('Actual')
 
     # Save confusion matrix plot as a file and log it to MLflow
-    os.makedirs('data/evaluation', exist_ok=True)
-    cm_file_path = f'data/evaluation/confusion_matrix_{dataset_name}.png'
+    os.makedirs(path('data', 'evaluation'), exist_ok=True)
+    cm_file_path = path(
+        'data', 'evaluation', f'confusion_matrix_{dataset_name}.png')
     plt.savefig(cm_file_path)
     mlflow.log_artifact(cm_file_path)
     plt.close()
@@ -131,32 +124,24 @@ def save_model_info(run_id: str, model_path: str, file_path: str) -> None:
 
 
 def main():
-    os.makedirs('data/evaluation', exist_ok=True)
-    mlflow.set_tracking_uri(
-        "http://ec2-54-162-174-76.compute-1.amazonaws.com:5000/")
-
-    mlflow.set_experiment('dvc-pipeline-runs')
+    os.makedirs(path('data', 'evaluation'), exist_ok=True)
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
 
     with mlflow.start_run() as run:
         try:
-            # Load parameters from YAML file
-            root_dir = os.path.abspath(os.path.join(
-                os.path.dirname(__file__), '../../'))
-            params = load_params(os.path.join(root_dir, 'params.yaml'))
+            params = load_params(path('params.yaml'))
 
             # Log parameters
             for key, value in params.items():
                 mlflow.log_param(key, value)
 
             # Load model and vectorizer
-            model = load_model(os.path.join(
-                root_dir, 'models/trained_model/lgbm_model.pkl'))
-            vectorizer = load_vectorizer(os.path.join(
-                root_dir, 'models/vectorizer_model/tfidf_vectorizer.pkl'))
+            model = load_model(path('models', 'trained_model', 'lgbm_model.pkl'))
+            vectorizer = load_vectorizer(path('models', 'vectorizer_model', 'tfidf_vectorizer.pkl'))
 
             # Load test data for signature inference
-            test_data = load_data(os.path.join(
-                root_dir, 'data/preprocessed/test_processed.csv'))
+            test_data = load_data(path('data', 'preprocessed', 'test_processed.csv'))
 
             # Prepare test data
             X_test_tfidf = vectorizer.transform(
@@ -165,34 +150,29 @@ def main():
 
             # Create a DataFrame for signature inference (using first few rows as an example)
             input_example = pd.DataFrame(X_test_tfidf.toarray(
-            )[:5], columns=vectorizer.get_feature_names_out())  # <--- Added for signature
+            )[:5], columns=vectorizer.get_feature_names_out())
 
             # Infer the signature
-            signature = infer_signature(input_example, model.predict(
-                X_test_tfidf[:5]))  # <--- Added for signature
+            signature = infer_signature(
+                input_example, model.predict(X_test_tfidf[:5]))
 
             # Log model with signature
             mlflow.sklearn.log_model(
                 model,
                 "lgbm_model",
-                signature=signature,  # <--- Added for signature
-                input_example=input_example  # <--- Added input example
+                signature=signature,
+                input_example=input_example,
             )
 
-            # Save model info
             artifact_uri = mlflow.get_artifact_uri()
-            model_path = f"{artifact_uri}/lgbm_model"
-            # save_model_info(run.info.run_id, model_path,
-            #                 'experiment_info.json')
             save_model_info(
                 run.info.run_id,
-                model_path,
-                os.path.join(root_dir, 'data/evaluation/experiment_info.json')
+                f"{artifact_uri}/lgbm_model",
+                path('data', 'evaluation', 'experiment_info.json'),
             )
 
             # Log the vectorizer as an artifact
-            mlflow.log_artifact(os.path.join(
-                root_dir, 'models/vectorizer_model/tfidf_vectorizer.pkl'))
+            mlflow.log_artifact(path('models', 'vectorizer_model', 'tfidf_vectorizer.pkl'))
 
             # Evaluate model and get metrics
             report, cm = evaluate_model(model, X_test_tfidf, y_test)
@@ -215,8 +195,8 @@ def main():
             mlflow.set_tag("dataset", "YouTube Comments")
 
         except Exception as e:
-            logger.error(f"Failed to complete model evaluation: {e}")
-            print(f"Error: {e}")
+            logger.error('Failed to complete model evaluation: %s', e)
+            sys.exit(1)
 
 
 if __name__ == '__main__':

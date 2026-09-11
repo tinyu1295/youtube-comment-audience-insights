@@ -1,30 +1,17 @@
-import numpy as np
-import pandas as pd
 import os
 import pickle
-import yaml
-import logging
+import sys
+
 import lightgbm as lgb
+import numpy as np
+import pandas as pd
+import yaml
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+from src.config import path
+from src.logging_utils import get_logger
 
-# logging configuration
-logger = logging.getLogger('model_building')
-logger.setLevel('DEBUG')
-
-console_handler = logging.StreamHandler()
-console_handler.setLevel('DEBUG')
-
-file_handler = logging.FileHandler('model_building_errors.log')
-file_handler.setLevel('ERROR')
-
-formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-console_handler.setFormatter(formatter)
-file_handler.setFormatter(formatter)
-
-logger.addHandler(console_handler)
-logger.addHandler(file_handler)
+logger = get_logger('model_building', 'model_building_errors.log')
 
 
 def load_params(params_path: str) -> dict:
@@ -60,12 +47,6 @@ def load_data(file_path: str) -> pd.DataFrame:
         raise
 
 
-def get_root_directory() -> str:
-    """Get the root directory (two levels up from this script's location)."""
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.abspath(os.path.join(current_dir, '../../'))
-
-
 def apply_tfidf(train_data: pd.DataFrame, max_features: int, ngram_range: tuple) -> tuple:
     """Apply TF-IDF with ngrams to the data."""
     try:
@@ -81,8 +62,8 @@ def apply_tfidf(train_data: pd.DataFrame, max_features: int, ngram_range: tuple)
         logger.debug(
             f"TF-IDF transformation complete. Train shape: {X_train_tfidf.shape}")
 
-        vectorizer_path = os.path.join(
-            get_root_directory(), 'models/vectorizer_model/tfidf_vectorizer.pkl')
+        vectorizer_path = path(
+            'models', 'vectorizer_model', 'tfidf_vectorizer.pkl')
         os.makedirs(os.path.dirname(vectorizer_path), exist_ok=True)
         # Save the vectorizer in the root directory
         with open(vectorizer_path, 'wb') as f:
@@ -132,11 +113,7 @@ def save_model(model, file_path: str) -> None:
 
 def main():
     try:
-        # Get root directory and resolve the path for params.yaml
-        root_dir = get_root_directory()
-
-        # Load parameters from the root directory
-        params = load_params(os.path.join(root_dir, 'params.yaml'))
+        params = load_params(path('params.yaml'))
         max_features = params['model_building']['max_features']
         ngram_range = tuple(params['model_building']['ngram_range'])
 
@@ -145,8 +122,8 @@ def main():
         n_estimators = params['model_building']['n_estimators']
 
         # Load the preprocessed training data from the interim directory
-        train_data = load_data(os.path.join(
-            root_dir, 'data/preprocessed/train_processed.csv'))
+        train_data = load_data(
+            path('data', 'preprocessed', 'train_processed.csv'))
 
         # Apply TF-IDF feature engineering on training data
         X_train_tfidf, y_train = apply_tfidf(
@@ -157,13 +134,13 @@ def main():
                                 learning_rate, max_depth, n_estimators)
 
         # Save the trained model in the root directory
-        save_model(best_model, os.path.join(
-            root_dir, 'models/trained_model/lgbm_model.pkl'))
+        save_model(best_model,
+                   path('models', 'trained_model', 'lgbm_model.pkl'))
 
     except Exception as e:
         logger.error(
             'Failed to complete the feature engineering and model building process: %s', e)
-        print(f"Error: {e}")
+        sys.exit(1)
 
 
 if __name__ == '__main__':

@@ -1,63 +1,34 @@
-import pickle
-import matplotlib.dates as mdates
-from mlflow.tracking import MlflowClient
-from nltk.stem import WordNetLemmatizer
-from nltk.corpus import stopwords
-import pandas as pd
-import re
-import numpy as np
-import mlflow
-from wordcloud import WordCloud
-import matplotlib.pyplot as plt
 import io
-from flask_cors import CORS
-from flask import Flask, request, jsonify, send_file
-import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend before importing pyplot
+import os
+import pickle
 
+import matplotlib
+matplotlib.use('Agg')  # non-interactive backend, must precede pyplot import
+
+import matplotlib.dates as mdates  # noqa: E402
+import matplotlib.pyplot as plt  # noqa: E402
+import mlflow  # noqa: E402
+import pandas as pd  # noqa: E402
+from flask import Flask, jsonify, request, send_file  # noqa: E402
+from flask_cors import CORS  # noqa: E402
+from wordcloud import WordCloud  # noqa: E402
+from nltk.corpus import stopwords  # noqa: E402
+
+from src.config import MLFLOW_TRACKING_URI, MODEL_NAME, path  # noqa: E402
+from src.preprocessing import ensure_nltk_data, preprocess_comment  # noqa: E402
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 
+ensure_nltk_data()
 
-def preprocess_comment(comment):
-    """Apply preprocessing transformations to a comment."""
-    try:
-        # Convert to lowercase
-        comment = comment.lower()
-
-        # Remove trailing and leading whitespaces
-        comment = comment.strip()
-
-        # Remove newline characters
-        comment = re.sub(r'\n', ' ', comment)
-
-        # Remove non-alphanumeric characters, except punctuation
-        comment = re.sub(r'[^A-Za-z0-9\s!?.,]', '', comment)
-
-        # Remove stopwords but retain important ones for sentiment analysis
-        stop_words = set(stopwords.words('english')) - \
-            {'not', 'but', 'however', 'no', 'yet'}
-        comment = ' '.join(
-            [word for word in comment.split() if word not in stop_words])
-
-        # Lemmatize the words
-        lemmatizer = WordNetLemmatizer()
-        comment = ' '.join([lemmatizer.lemmatize(word)
-                           for word in comment.split()])
-
-        return comment
-    except Exception as e:
-        print(f"Error in preprocessing comment: {e}")
-        return comment
+MODEL_VERSION = os.getenv('MODEL_VERSION', '3')
 
 
 # Load the model and vectorizer from the model registry and local storage
 def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
-    # Set MLflow tracking URI to your server
-    mlflow.set_tracking_uri(
-        "http://ec2-54-162-174-76.compute-1.amazonaws.com:5000/")
-    client = MlflowClient()
+    """Load the registered model from MLflow and the local TF-IDF vectorizer."""
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     model_uri = f"models:/{model_name}/{model_version}"
     model = mlflow.pyfunc.load_model(model_uri)
     with open(vectorizer_path, 'rb') as file:
@@ -76,17 +47,20 @@ def load_model(model_path, vectorizer_path):
             vectorizer = pickle.load(file)
 
         return model, vectorizer
-    except Exception as e:
+    except Exception:
         raise
 
 
+VECTORIZER_PATH = path('models', 'vectorizer_model', 'tfidf_vectorizer.pkl')
+LOCAL_MODEL_PATH = path('models', 'trained_model', 'lgbm_model.pkl')
+
 try:
     model, vectorizer = load_model_and_vectorizer(
-        "yt_comment_judge_plugin_model", "3", "models/vectorizer_model/tfidf_vectorizer.pkl")
+        MODEL_NAME, MODEL_VERSION, VECTORIZER_PATH)
 except Exception as e:
-    print(f"MLflow model load failed ({e}), falling back to local model")
-    model, vectorizer = load_model(
-        "models/trained_model/lgbm_model.pkl", "models/vectorizer_model/tfidf_vectorizer.pkl")
+    app.logger.warning(
+        'MLflow model load failed (%s), falling back to local model', e)
+    model, vectorizer = load_model(LOCAL_MODEL_PATH, VECTORIZER_PATH)
 
 
 @app.route('/')
@@ -98,8 +72,6 @@ def home():
 def predict():
     data = request.json
     comments = data.get('comments')
-    # print("i am the comment: ",comments)
-    # print("i am the comment type: ",type(comments))
 
     if not comments:
         return jsonify({"error": "No comments provided"}), 400
@@ -269,7 +241,7 @@ def generate_trend_graph():
 
         # Resample the data over monthly intervals and count sentiments
         monthly_counts = df.resample(
-            'M')['sentiment'].value_counts().unstack(fill_value=0)
+            'ME')['sentiment'].value_counts().unstack(fill_value=0)
 
         # Calculate total counts per month
         monthly_totals = monthly_counts.sum(axis=1)
@@ -331,4 +303,9 @@ def generate_trend_graph():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000, debug=True)
+    # Debug mode exposes an interactive console to anyone who can reach the
+    # server, so it stays off unless explicitly enabled for local development.
+    debug = os.getenv('FLASK_DEBUG', '').lower() in ('1', 'true', 'yes')
+    host = os.getenv('HOST', '127.0.0.1')
+    port = int(os.getenv('PORT', '8000'))
+    app.run(host=host, port=port, debug=debug)
